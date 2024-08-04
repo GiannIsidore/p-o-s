@@ -15,9 +15,9 @@ if (empty($input)) {
 }
 
 $cashierList = [
-       ["id" => 1, "username" => "Pitok",  "fullname" => "Batolata Pitok", "password" => '123'],
-    ["id" => 2, "username" => "Kulas ", "fullname" => "Kulas Lacoste",  "password" => '321'],
-    ["id" => 3, "username" => "Joksan", "fullname" => "Joksan Jambert",  "password" => '111'],
+    ["id" => 1, "username" => "Pitok", "fullname" => "Batolata Pitok", "password" => '123', "role" => "cashier"],
+    ["id" => 2, "username" => "Kulas", "fullname" => "Kulas Lacoste", "password" => '321', "role" => "cashier"],
+    ["id" => 3, "username" => "Joksan", "fullname" => "Joksan Jambert", "password" => '111', "role" => "cashier"],
 ];
 
 $data = json_decode($input, true);
@@ -42,17 +42,27 @@ error_log("Password: " . $password);
 
 $found = false;
 $fullname = "";
+$role = "";
+$id = 0;
 
-foreach ($cashierList as $cahier) {
-    if ($cahier['username'] === $username && $cahier['password'] === $password) {
+foreach ($cashierList as $cashier) {
+    if ($cashier['username'] === $username && $cashier['password'] === $password) {
         $found = true;
-        $fullname = $cahier['fullname'];
+        $fullname = $cashier['fullname'];
+        $role = $cashier['role'];
+        $id = $cashier['id'];
         break;
     }
 }
 
 if ($found) {
-    echo json_encode(["status" => "success", "message" => "Login successful", "fullname" => $fullname]);
+    echo json_encode([
+        "status" => "success",
+        "message" => "Login successful",
+        "fullname" => $fullname,
+        "role" => $role,
+        "id" => $id
+    ]);
 } else {
     echo json_encode(["status" => "error", "message" => "Invalid username or password"]);
 }

@@ -27,10 +27,19 @@ import { Separator } from "@/components/ui/separator";
 import {
   AlertDialog,
   AlertDialogContent,
+  AlertDialogHeader,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import Image from "next/image";
 import DateTimeDisplay from "@/components/ui/currentTime";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+} from "@/components/ui/card";
 // types.ts
 export interface Transaction {
   id: number;
@@ -43,7 +52,7 @@ export interface Transaction {
   total: number;
   cashTendered: number;
   change: number;
-  date: string; // ISO string date
+  date: string;
 }
 
 export default function Component() {
@@ -56,6 +65,9 @@ export default function Component() {
   const [quantity, setQuantity] = useState(1);
   const [barcodes, setBarcode] = useState("");
   const [fullname, setFullname] = useState("");
+  const [isAuthDialogOpen, setIsAuthDialogOpen] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [isAuthorized, setIsAuthorized] = useState(false);
   const [selectedPending, setSelectedPending] = useState(-1);
   const [selectedItemIndex, setSelectedItemIndex] = useState(-1);
   const [pendingTransactions, setPendingTransactions] = useState<Transaction[]>(
@@ -69,6 +81,9 @@ export default function Component() {
   const openReceiptDialogRef = useRef<HTMLButtonElement>(null);
   const openHotkey = useRef<HTMLButtonElement>(null);
   const saveToPending = useRef<HTMLButtonElement>(null);
+  const authDialogTriggerRef = useRef<HTMLButtonElement>(null);
+  const submitAuthRef = useRef<HTMLButtonElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
 
   // Load cashier's fullname from localStorage
   useEffect(() => {
@@ -190,7 +205,15 @@ export default function Component() {
       description: "Transaction retrieved.",
     });
   };
-
+  useEffect(() => {
+    if (isAuthDialogOpen) {
+      // Delay focusing to ensure dialog is fully rendered
+      const timeoutId = setTimeout(() => {
+        passwordInputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timeoutId); // Clean up timeout if dialog is closed before focus
+    }
+  }, [isAuthDialogOpen]);
   // Key press handling for hotkeys
   const handleKeyPress = useCallback(
     (event: KeyboardEvent) => {
@@ -236,7 +259,7 @@ export default function Component() {
         event.preventDefault();
         setQuantity(1);
       }
-      if (event.key === "r" && event.ctrlKey) {
+      if (event.key === "t") {
         event.preventDefault();
         openReceiptDialogRef.current?.click();
       }
@@ -253,6 +276,18 @@ export default function Component() {
         event.preventDefault();
         newTransaction();
       }
+      // Void Cart: V
+
+      if (event.key === "v") {
+        event.preventDefault();
+        setIsAuthDialogOpen(true); // Open the dialog
+        authDialogTriggerRef.current?.click();
+      }
+      if (event.key === "b" && event.ctrlKey) {
+        event.preventDefault();
+        handleAuthSubmit("voidCart");
+      } // En
+
       if (event.key === "[") {
         event.preventDefault();
         setSelectedPending((prevIndex) =>
@@ -264,6 +299,10 @@ export default function Component() {
         setSelectedPending((prevIndex) =>
           prevIndex > 0 ? prevIndex - 1 : prevIndex
         );
+      }
+      if (event.key === "z" && event.ctrlKey) {
+        event.preventDefault();
+        handleAuthSubmit("generateReport"); // Generate Z report
       }
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -277,19 +316,21 @@ export default function Component() {
           prevIndex > 0 ? prevIndex - 1 : prevIndex
         );
       }
-      if (event.key === ";") {
+      if (event.key === "d") {
+        event.preventDefault();
+        showPendingTransactions();
+      }
+
+      if (event.key === "a") {
         event.preventDefault();
         // Ensure selectedPending is within the bounds of pendingTransactions
-        if (
-          selectedPending >= 0 &&
-          selectedPending < pendingTransactions.length
-        ) {
+        if (selectedPending >= 0) {
           // Call the function to retrieve the transaction
           retrievePendingTransaction(selectedPending);
           // Optionally, you could remove the transaction or update the state if needed
         }
       }
-      if (event.key === "-") {
+      if (event.key === "f") {
         saveToPending.current?.click();
       }
       if (
@@ -335,8 +376,24 @@ export default function Component() {
         });
       }
     },
-    [barcodes, quantity, cart, total, cashTendered, selectedItemIndex]
+    [
+      barcodes,
+      quantity,
+      cart,
+      total,
+      cashTendered,
+      selectedItemIndex,
+      pendingTransactions,
+      authDialogTriggerRef,
+      passwordInputRef,
+    ]
   );
+  const showPendingTransactions = () => {
+    // Optionally, scroll to the pending transactions table or open a modal
+    console.log("Displaying pending transactions:");
+    setSelectedPending(0); // Optionally set the selected pending transaction to the first one
+    // You could also use a state to show or hide a modal containing pending transactions
+  };
   const newTransaction = () => {
     setCart([]);
     setTotal(0);
@@ -358,27 +415,28 @@ export default function Component() {
     };
   }, [handleKeyPress]);
 
-  // Function to process payment and save to shift report
   const processPayment = () => {
     if (cashTendered >= total) {
       const changeAmount = cashTendered - total;
       setChange(changeAmount);
 
-      // Save the transaction to the shift report
       const transaction = {
-        cashier: fullname, // or use the logged-in cashier's name
+        cashier: localStorage.getItem("fullname"),
         items: cart,
         total: total,
         cashTendered: cashTendered,
         change: changeAmount,
         date: new Date().toISOString(),
+        shiftNumber: localStorage.getItem("id"),
       };
+
       saveShiftReport(transaction);
 
       toast({
         variant: "success",
         description: `Payment processed. Change: ₱${changeAmount.toFixed(2)}`,
       });
+      console.log(transaction);
     } else {
       toast({
         variant: "destructive",
@@ -387,53 +445,104 @@ export default function Component() {
     }
   };
 
-  // Function to save transaction to shift report
-  const saveShiftReport = (transaction: Transaction) => {
-    const reports = JSON.parse(localStorage.getItem("shiftReports")) || [];
+  const saveShiftReport = (transaction) => {
+    const reports = JSON.parse(localStorage.getItem("shiftReports") || "[]");
+    console.log("Stored reports:", reports);
+
     reports.push(transaction);
+
     localStorage.setItem("shiftReports", JSON.stringify(reports));
   };
 
-  // Function to generate shift report
   const generateShiftReport = () => {
     const reports = JSON.parse(localStorage.getItem("shiftReports")) || [];
-    let grandTotal = 0;
+    console.log("All reports:", reports);
+
+    const currentCashier = localStorage.getItem("fullname");
+    const currentShift = localStorage.getItem("id");
+
+    const filteredReports = reports.filter(
+      (report) =>
+        report.cashier === currentCashier && report.shiftNumber === currentShift
+    );
+
+    const grandTotal = filteredReports.reduce((sum, t) => sum + t.total, 0);
 
     const reportHtml = `
-      <html>
-        <head>
-          <title>Shift Report</title>
-          <style>
-            body { font-family: Arial, sans-serif; }
-            .report { margin: 0 auto; width: 80%; }
-            .header { font-size: 18px; font-weight: bold; }
-            .item { margin-bottom: 10px; }
-            .total { font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <div class="report">
-            <div class="header">Shift Report</div>
-            ${reports
-              .map(
-                (transaction) => `
-              <div class="item">
-                <div>Cashier: ${transaction.cashier}</div>
-                <div>Date: ${transaction.date}</div>
-                <div>Total: ₱${transaction.total.toFixed(2)}</div>
-              </div>
-            `
-              )
-              .join("")}
-            <div class="total">
-              Grand Total: ₱${reports
-                .reduce((sum, t) => sum + t.total, 0)
-                .toFixed(2)}
-            </div>
+    <html>
+      <head>
+        <title>Shift Report</title>
+        <style>
+          body {
+            font-family: 'Courier New', monospace;
+            justify-content: center;
+            align-items: center;
+          }
+          .report {
+            margin: 0 auto;
+            width: 300px;
+            border: 1px dashed #000;
+            padding: 20px;
+            background-color: #fff;
+          }
+          .header {
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 1px dashed #000;
+            padding-bottom: 10px;
+          }
+          .item {
+            margin-bottom: 10px;
+            display: flex;
+          
+          }
+          .item div {
+            width: 45%;
+            padding: 5px;
+          }
+          .total {
+            font-weight: bold;
+            border-top: 1px dashed #000;
+            padding-top: 10px;
+            margin-top: 20px;
+            display: flex;
+            justify-content: space-between;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="report">
+        div class="header">GAISANO</div>
+          <div class="header">Shift Report for Shift ${currentShift}</div>
+          ${filteredReports
+            .map(
+              (transaction) => `
+                <div class="item">
+                  <div>Cashier:</div>
+                  <div>${transaction.cashier}</div>
+                </div>
+                <div class="item">
+                  <div>Date:</div>
+                  <div>${transaction.date}</div>
+                </div>
+                <div class="item">
+                  <div>Total:</div>
+                  <div>₱${transaction.total.toFixed(2)}</div>
+                </div>
+                <hr>
+              `
+            )
+            .join("")}
+          <div class="total">
+            <div>Grand Total:</div>
+            <div>₱${grandTotal.toFixed(2)}</div>
           </div>
-        </body>
-      </html>
-    `;
+        </div>
+      </body>
+    </html>
+  `;
 
     const reportWindow = window.open("", "", "width=800,height=600");
     if (reportWindow) {
@@ -445,21 +554,140 @@ export default function Component() {
     }
   };
 
-  // Handle report generation (add hotkey or button as needed)
   const handleGenerateReport = () => {
     generateShiftReport();
   };
+  const generateZReport = () => {
+    console.log(true);
+    const reports = JSON.parse(localStorage.getItem("shiftReports")) || [];
+
+    // Sort the reports by ID (1 first, then 2, then 3)
+    reports.sort((a, b) => a.id - b.id);
+
+    // Generate the HTML for the Z report
+    const reportHtml = `
+    <html>
+      <head>
+        <title>GAISANO</title>
+        <style>
+          body {
+            font-family: 'Courier New', monospace;
+            margin: 0;
+            padding: 20px;
+            width: 300px;
+          }
+          .report {
+            border: 1px solid #000;
+            padding: 10px;
+          }
+          .header, .footer {
+            text-align: center;
+            font-weight: bold;
+          }
+          .item {
+            display: flex;
+            justify-content: space-between;
+          }
+          .item:last-child {
+            border-top: 1px solid #000;
+            padding-top: 10px;
+            margin-top: 10px;
+          }
+          .separator {
+            border-top: 1px dashed #000;
+            margin: 10px 0;
+          }
+          pre {
+            font-family: 'Courier New', monospace;
+            white-space: pre;
+            font-size: inherit;
+            margin: 0;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="report">
+          <pre class="header">GAISANO</pre>
+        
+          ${reports
+            .map(
+              (report) => `
+                <div class="item">
+                  <div>Cashier:</div>
+                  <div>${report.cashier}</div>
+                </div>
+                <div class="item">
+                  <div>Date:</div>
+                  <div>${report.date}</div>
+                </div>
+                <div class="item">
+                  <div>Total:</div>
+                  <div>₱${report.total.toFixed(2)}</div>
+                </div>
+                <hr>
+              `
+            )
+            .join("")}
+          <div class="separator"></div>
+          <div class="item">
+            <div>Total Transactions:</div>
+            <div>${reports.length}</div>
+          </div>
+          <div class="item">
+            <div>Grand Total:</div>
+            <div>₱${reports
+              .reduce((sum, report) => sum + report.total, 0)
+              .toFixed(2)}</div>
+          </div>
+          <pre class="footer">End of Z Report</pre>
+        </div>
+      </body>
+    </html>
+  `;
+
+    // Open the report in a new window
+    const reportWindow = window.open("", "", "width=800,height=600");
+    if (reportWindow) {
+      reportWindow.document.open();
+      reportWindow.document.write(reportHtml);
+      reportWindow.document.close();
+      reportWindow.focus();
+      // Uncomment the line below to automatically print the report
+      // reportWindow.print();
+    }
+  };
+
+  const logout = () => {
+    const shiftReports = localStorage.getItem("shiftReports");
+
+    // Clear all local storage
+    localStorage.clear();
+
+    // Restore the shift reports
+    if (shiftReports) {
+      localStorage.setItem("shiftReports", shiftReports);
+    }
+
+    // Redirect to login page and show a success toast
+    router.push("/");
+    toast({ title: "Logged out successfully", variant: "success" });
+  };
 
   useEffect(() => {
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "g" && event.ctrlKey) {
-        // Example hotkey for report generation
+    const handleKeyDown = (event) => {
+      if (event.key === "G" && event.shiftKey) {
         event.preventDefault();
-        handleGenerateReport();
+        handleGenerateReport(); // Generate report based on current shift
       }
-    });
+      if (event.key === "L" && event.shiftKey) {
+        event.preventDefault();
+        logout(); // Logout the user
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.removeEventListener("keydown", handleGenerateReport);
+      document.removeEventListener("keydown", handleKeyDown);
     };
   }, []);
 
@@ -547,6 +775,48 @@ export default function Component() {
       //   printWindow.print();
     }
   };
+  const handleAuthSubmit = (action: "voidCart" | "generateReport") => {
+    const correctPassword = adminPassword;
+    console.log(adminPassword);
+    if (adminPassword === correctPassword) {
+      if (action === "voidCart") {
+        setIsAuthorized(true);
+        voidCart();
+        toast({
+          variant: "success",
+          description: "Cart voided successfully.",
+        });
+      } else if (action === "generateReport") {
+        setIsAuthorized(true);
+        generateZReport();
+        toast({
+          variant: "success",
+          description: "Z Report generated successfully.",
+        });
+      }
+      setAdminPassword("");
+      setIsAuthDialogOpen(false);
+    } else {
+      toast({
+        variant: "destructive",
+        description: "Invalid admin password.",
+      });
+    }
+  };
+
+  const voidCart = () => {
+    setCart([]);
+    setTotal(0);
+    setCashTendered(0);
+    setChange(0);
+    setBarcode("");
+    setQuantity(1);
+
+    toast({
+      variant: "success",
+      description: "Cart has been voided.",
+    });
+  };
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-7 gap-6 w-full h-[100vh] max-w-10xl mx-auto p-4 md:p-6">
@@ -603,19 +873,19 @@ export default function Component() {
                       <strong>Ctrl + Enter:</strong> Add Item to Cart
                     </li>
                     <li>
-                      <strong>Ctrl + C:</strong> Clear Barcode Input
+                      <strong>Ctrl + B :</strong> Submit Admin Password
                     </li>
                     <li>
-                      <strong>Ctrl + Q:</strong> Clear Quantity Input
+                      <strong>V :</strong> Void
                     </li>
                     <li>
-                      <strong>Ctrl + R:</strong> Open Receipt Dialog
+                      <strong>T:</strong> Open Receipt Dialog
                     </li>
                     <li>
                       <strong>Ctrl + S:</strong> Submit Payment
                     </li>
                     <li>
-                      <strong>W:</strong> Start New Transaction
+                      <strong>Shift + G:</strong> Generate Shift Report
                     </li>
                     <li>
                       <strong>[:</strong> Navigate through Pending Transactions
@@ -630,8 +900,14 @@ export default function Component() {
                       Items
                     </li>
                     <li>
-                      <strong>Shift + ;:</strong> Retrieve Selected Pending
-                      Transaction
+                      <strong> F :</strong>Save to Pending
+                    </li>
+                    <li>
+                      <strong> A :</strong>Retrieve Pending
+                    </li>
+                    <li>
+                      <strong>Shift + SemiColon :</strong> Retrieve Selected
+                      Pending Transaction
                     </li>
                     <li>
                       <strong>Shift (Left):</strong> Update Quantity of Selected
@@ -647,45 +923,44 @@ export default function Component() {
           </SheetContent>
         </Sheet>
         <div className="block border rounded-sm  bg-blue-100">
-          {pendingTransactions.length > 0 && (
-            <div className="max-h-[300px] overflow-y-auto border border-gray-200">
-              <Table className="text-xl min-w-full">
-                <TableHeader>
-                  <TableRow className="bg-blue-800 col-span-3">
-                    <TableHead className="bg-blue-800 col-span-3 w-full">
-                      Pending
-                    </TableHead>
+          <div className="max-h-[300px] overflow-y-auto border border-gray-200">
+            <Table className="text-xl min-w-full">
+              <TableHeader>
+                <TableRow className="bg-blue-800 ">
+                  <TableHead className="bg-blue-800 row-span-3 w-full">
+                    Pending
+                  </TableHead>
+                  <TableHead></TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingTransactions.map((transaction, index) => (
+                  <TableRow
+                    key={transaction.id}
+                    className={selectedPending === index ? "bg-blue-300" : ""}
+                  >
+                    <TableCell className="py-4 px-6 text-black">
+                      <button
+                        onClick={() => retrievePendingTransaction(index)}
+                        className="hidden"
+                      >
+                        Retrieve
+                      </button>
+                      Transaction #{index + 1}
+                    </TableCell>
+
+                    <TableCell className="py-4 px-6 text-black">
+                      ₱{transaction.total.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="py-4 px-6 text-black">
+                      {transaction.date}
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pendingTransactions.map((transaction, index) => (
-                    <TableRow
-                      key={transaction.id}
-                      className={selectedPending === index ? "bg-blue-300" : ""}
-                    >
-                      <TableCell className="py-4 px-6 text-black">
-                        <button
-                          onClick={() => retrievePendingTransaction(index)}
-                          className="text-blue-500 hover:underline"
-                        >
-                          Retrieve
-                        </button>
-                      </TableCell>
-                      <TableCell className="py-4 px-6 text-black">
-                        Transaction #{index + 1}
-                      </TableCell>
-                      <TableCell className="py-4 px-6 text-black">
-                        ₱{transaction.total.toFixed(2)}
-                      </TableCell>
-                      <TableCell className="py-4 px-6 text-black">
-                        {transaction.date}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       </div>
 
@@ -719,9 +994,53 @@ export default function Component() {
           </div>
         </div>
         <div className="flex-1 border rounded-lg overflow-auto bg-blue-100">
+          <AlertDialog
+            open={isAuthDialogOpen}
+            onOpenChange={setIsAuthDialogOpen}
+          >
+            <AlertDialogTrigger ref={authDialogTriggerRef} className="hidden">
+              Open Auth Dialog
+            </AlertDialogTrigger>
+
+            <AlertDialogContent>
+              <AlertDialogHeader className="text-4xl font-bold text-blue-800">
+                Admin Authorization
+              </AlertDialogHeader>
+              <div className="grid gap-2">
+                <Label htmlFor="password" className="text-blue-400">
+                  Admin Password
+                </Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  required
+                  ref={passwordInputRef}
+                />
+              </div>
+              <div className="flex justify-end gap-2 mt-4">
+                {/* <button
+                  type="button"
+                  className="bg-blue-500 text-white px-4 py-2 rounded"
+                  onClick={handleAuthSubmit}
+                >
+                  Submit
+                </button> */}
+                {/* <button
+                  type="button"
+                  className="bg-gray-500 text-white px-4 py-2 rounded"
+                  onClick={() => setIsAuthDialogOpen(false)}
+                >
+                  Cancel
+                </button> */}
+              </div>
+            </AlertDialogContent>
+          </AlertDialog>
           <Table className="text-xl">
             <TableHeader>
               <TableRow className="bg-blue-800 ">
+                <TableHead className="text-white ">Barcode</TableHead>
                 <TableHead className="text-white ">Item</TableHead>
                 <TableHead className="text-white ">Qty</TableHead>
                 <TableHead className="text-white ">Price</TableHead>
@@ -735,6 +1054,10 @@ export default function Component() {
                   key={index}
                   className={selectedItemIndex === index ? "bg-blue-300" : ""}
                 >
+                  {" "}
+                  <TableCell className="py-4 px-6 text-black">
+                    {item.barcode}
+                  </TableCell>
                   <TableCell className="py-4 px-6 text-black">
                     {item.p_name}
                   </TableCell>
@@ -747,19 +1070,13 @@ export default function Component() {
                   <TableCell className="py-4 px-6 text-black">
                     ₱{item.total.toFixed(2)}
                   </TableCell>
-                  <TableCell className="py-4 px-6 text-black">
-                    <AlertDialog>
-                      <AlertDialogTrigger>test</AlertDialogTrigger>
-                      <AlertDialogContent>
-                        {/*!add quantity or take quantity */}
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </div>
+        <h1 className="text-5xl">Total: {total}</h1>
+
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="cash-tendered">Cash Tendered</Label>
@@ -775,15 +1092,23 @@ export default function Component() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="change">Change</Label>
-            <Input
+            <h1
               id="change"
-              type="number"
-              value={change}
-              min={0}
-              disabled
-              className="text-xl text-black py-4 px-6 h-14"
-            />
+              className="text-xl bg-white rounded-sm text-black py-4 px-6 h-14"
+            >
+              PHP &nbsp;
+              {change}
+            </h1>
           </div>
+          <Button
+            variant="outline"
+            size="lg"
+            className="py-3 px-6 hidden"
+            ref={printReceiptRef}
+            onClick={printReceipt}
+          >
+            Print
+          </Button>
         </div>
         <AlertDialog>
           <AlertDialogTrigger className="hidden " ref={openReceiptDialogRef}>
@@ -798,15 +1123,6 @@ export default function Component() {
               <div className="p-4 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-bold text-white">Receipt</h3>
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="py-3 px-6 hidden"
-                    ref={printReceiptRef}
-                    onClick={printReceipt}
-                  >
-                    Print
-                  </Button>
                 </div>
                 <Separator />
 

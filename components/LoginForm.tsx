@@ -56,12 +56,14 @@ export default function LoginForm() {
         }
       );
       console.log(response.data);
-      console.log("Response received:", response.data); // Debug log
 
       if (response.data.status === "success") {
         toast({ title: response.data.message, variant: "success" });
         localStorage.setItem("username", selectedUsername);
         localStorage.setItem("fullname", response.data.fullname);
+        localStorage.setItem("role", response.data.role);
+        localStorage.setItem("id", response.data.id);
+        // Set current shift number when a shift starts
 
         router.push(
           `/pos?username=${selectedUsername}&fullname=${response.data.fullname}`
