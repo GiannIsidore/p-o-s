@@ -388,12 +388,12 @@ export default function Component() {
       passwordInputRef,
     ]
   );
-  const showPendingTransactions = () => {
-    // Optionally, scroll to the pending transactions table or open a modal
-    console.log("Displaying pending transactions:");
-    setSelectedPending(0); // Optionally set the selected pending transaction to the first one
-    // You could also use a state to show or hide a modal containing pending transactions
-  };
+  // const showPendingTransactions = () => {
+  //   // Optionally, scroll to the pending transactions table or open a modal
+  //   console.log("Displaying pending transactions:");
+  //   setSelectedPending(0); // Optionally set the selected pending transaction to the first one
+  //   // You could also use a state to show or hide a modal containing pending transactions
+  // };
   const newTransaction = () => {
     setCart([]);
     setTotal(0);
@@ -431,6 +431,7 @@ export default function Component() {
       };
 
       saveShiftReport(transaction);
+      printReceipt();
 
       toast({
         variant: "success",
@@ -984,7 +985,7 @@ export default function Component() {
             <Label htmlFor="quantity">Quantity</Label>
             <Input
               id="quantity"
-              type="number"
+              type="text"
               value={quantity}
               min={1}
               className="text-xl py-4 px-6 h-14 text-black"
@@ -1075,7 +1076,7 @@ export default function Component() {
             </TableBody>
           </Table>
         </div>
-        <h1 className="text-5xl">Total: {total}</h1>
+        <h1 className="text-5xl">Total: ₱{total}</h1>
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
@@ -1090,7 +1091,7 @@ export default function Component() {
               ref={cashTenderedRef}
             />
           </div>
-          <div className="space-y-2">
+          {/* <div className="space-y-2">
             <Label htmlFor="change">Change</Label>
             <h1
               id="change"
@@ -1099,7 +1100,7 @@ export default function Component() {
               PHP &nbsp;
               {change}
             </h1>
-          </div>
+          </div> */}
           <Button
             variant="outline"
             size="lg"
@@ -1144,8 +1145,15 @@ export default function Component() {
                   <Separator />
 
                   <div className="pt-2 flex text-white items-center justify-between font-bold">
-                    <span>Total</span>
-                    <span>₱{total.toFixed(2)}</span>
+                    <div>
+                      {" "}
+                      <span>Total:</span>
+                      <span>₱{total.toFixed(2)}</span>
+                    </div>
+                    <div>
+                      <span>Change:</span>
+                      <span>₱{cashTendered - total}</span>
+                    </div>
                   </div>
                 </div>
               </div>

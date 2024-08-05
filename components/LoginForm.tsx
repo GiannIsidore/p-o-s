@@ -94,7 +94,7 @@ export default function LoginForm() {
   };
 
   return (
-    <div className="w-full h-full lg:grid lg:min-h-[600px] lg:grid-cols-2 xl:min-h-[800px ] text-white ">
+    <div className="w-full h-full justify-evenly items-center lg:grid lg:min-h-[600px] lg:grid-cols-2 xl:min-h-[800px ] text-white ">
       <div className="flex items-center justify-center py-12 ">
         <div className="mx-auto grid w-[350px] gap-6  p-9">
           <div className="grid gap-2 text-left pb-4">
@@ -146,13 +146,13 @@ export default function LoginForm() {
           </div>
         </div>
       </div>
-      <div className="hidden bg-muted  lg:block">
+      <div className="hidden h-full w-full pt-60 pl-36 bg-white lg:items-center lg:justify-center lg:block">
         <Image
           src="/LOGO.jpg"
           alt="Image"
-          width="700"
-          height="700"
-          className="pt-28 dark:brightness-[0.2] dark:grayscale"
+          width={400}
+          height={400}
+          className="self-center dark:brightness-[0.2] dark:grayscale"
         />
       </div>
     </div>
